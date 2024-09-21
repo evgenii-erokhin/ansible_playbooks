@@ -1,0 +1,11 @@
+---
+- name: Start backup PostgreSQL
+  hosts: all
+  become: yes
+  tasks:
+    - include_role:
+        name: postgres_backup
+      vars:
+        pg_dump_port: "5434"
+        pg_dump_host: "127.0.0.2"
+        backup_name: "dev_postgres_dump_{{ ansible_date_time.date }}.tgz"

@@ -1,0 +1,18 @@
+---
+postgres_image: "postgres:14"
+
+vault_s3: "{{ lookup('community.hashi_vault.hashi_vault', 'secret=path/for/your/secrets') }}"
+s3_access_key: "{{ vault_s3['s3_backup_user'] }}"
+s3_secret_key: "{{ vault_s3['s3_backup_password'] }}"
+s3_bucket: "backup"
+endpoint_url: "https://{{ vault_selectel['s3_url'] }}"
+vault_postgres: "{{ lookup('community.hashi_vault.hashi_vault', 'secret=another/path/for/your/secrets') }}"
+pg_password: "{{ vault_postgres['password'] }}"
+pg_username: "{{ vault_postgres['user'] }}"
+pg_db_name: "postgres"
+pg_dump_port: "5432"
+pg_dump_host: "localhost"
+
+backup_name: "postgres_dump_{{ ansible_date_time.date }}.tgz"
+required_backups_count: 5
+

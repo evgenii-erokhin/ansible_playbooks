@@ -1,0 +1,53 @@
+---
+- name: Dump postgres
+  community.docker.docker_container:
+    name: dump_postgres
+    image: "{{ postgres_image }}"
+    command: pg_dump -F p -Z gzip -f /tmp/{{ backup_name }}
+    volumes:
+      - /tmp:/tmp
+    auto_remove: yes
+    env:
+      PGPASSWORD: "{{ pg_password }}"
+      PGUSER: "{{ pg_username }}"
+      PGDATABASE: "{{ pg_db_name }}"
+      PGHOST: "{{ pg_host }}"
+      PGPORT: "{{ pg_port }}"
+
+- name: Put backup archive to s3
+  amazon.aws.s3_object:
+    access_key: "{{ s3_access_key }}"
+    secret_key: "{{ s3_secret_key }}"
+    bucket: "{{ s3_bucket }}"
+    object: "{{ backup_name }}"
+    src: "/tmp/{{ backup_name }}"
+    mode: put
+    encrypt: no
+    endpoint_url: "{{ endpoint_url }}"
+
+- name: Deleting backup from host
+  file:
+    path: "/tmp/{{ backup_name }}"
+    state: absent
+
+- name: Get list objects from s3 storage
+  amazon.aws.s3_object:
+    access_key: "{{ s3_access_key }}"
+    secret_key: "{{ s3_secret_key }}"
+    bucket: "{{ s3_bucket }}"
+    mode: list
+    endpoint_url: "{{ endpoint_url }}"
+  register: list_of_backups
+
+- name: Rotate backups to maintain amount_required_backup_archives
+  vars:
+    s3_backup_count: "{{ list_of_backups.s3_keys | length }}"
+  amazon.aws.s3_object:
+    access_key: "{{ s3_access_key }}"
+    secret_key: "{{ s3_secret_key }}"
+    bucket: "{{ s3_bucket }}"
+    endpoint_url: "{{ endpoint_url }}"
+    mode: delobj
+    object: "{{ item }}"
+  loop: "{{ list_of_backups.s3_keys[:s3_backup_count | int - required_backups_count] }}"
+  when: "s3_backup_count | int > required_backups_count"
