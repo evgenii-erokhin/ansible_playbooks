@@ -1,0 +1,188 @@
+---
+- name: Install Python
+  apt:
+    pkg:
+      - python3.11
+      - python3.11-venv
+      - python3-pip
+    update_cache: yes
+
+- name: Create symlink for python
+  file:
+    src: /usr/bin/python3
+    dest: /usr/local/bin/python3
+    state: link
+
+- name: Install packages
+  apt:
+    pkg:
+      - git
+      - git-lfs
+      - curl
+      - ca-certificates
+      - awscli
+      - openjdk-21-jre-headless
+      - jq
+      - wget
+      - mc
+      - vim
+      - htop
+      - ncdu
+      - zsh
+
+- name: Install firebase
+  shell: curl -sL https://firebase.tools | bash
+
+  # Install Wine
+- name: Enable 32 bit architecture
+  shell: |
+      dpkg --add-architecture i386
+
+- name: Prepare to install Wine
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Download and add the repository key
+  get_url:
+    url: https://dl.winehq.org/wine-builds/winehq.key
+    dest: /etc/apt/keyrings/winehq-archive.key
+
+- name: Download the WineHQ sources file
+  get_url:
+    url: https://dl.winehq.org/wine-builds/ubuntu/dists/{{ ansible_distribution_release }}/winehq-{{ansible_distribution_release }}.sources
+    dest: /etc/apt/sources.list.d/
+
+- name: Install Wine
+  apt:
+    name: winehq-stable
+    update_cache: yes
+    install-recommends: yes
+
+  # Maintaining consistency with the mac version of Wine
+- name: Create Symlink for Wine
+  file:
+    src: /usr/bin/wine64
+    dest: /usr/bin/Wine64
+    state: link
+
+  # Install Docker
+- name: Set rights
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Add docker key and change rights to key file
+  block:
+    - name: Add docker key
+      get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+
+    - name: Change rights
+      file:
+        path: /etc/apt/keyrings/docker.asc
+        state: file
+        mode: "a+r"
+
+- name: Get architecture of OS
+  shell: dpkg --print-architecture
+  register: os_architecture
+
+- name: Add the repository of docker to apt sources
+  apt_repository:
+    repo: deb [arch={{ os_architecture.stdout }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu  {{ ansible_distribution_release }} stable
+    filename: docker
+
+- name: Install docker
+  apt:
+    pkg:
+      - docker-ce=5:25.0.5-1~ubuntu.22.04~{{ ansible_distribution_release }}
+      - docker-ce-cli=5:25.0.5-1~ubuntu.22.04~{{ ansible_distribution_release }}
+      - containerd.io=1.6.28-2
+    update_cache: yes
+
+- name: Start docker
+  systemd:
+    state: started
+    enabled: yes
+    name: docker
+
+- name: Install dotnet-sdk
+  apt:
+      name: dotnet-sdk-8.0
+
+- name: Install dotnet-sonarscaner
+  shell: dotnet tool install --global dotnet-sonarscanner
+
+- name: Create .bash_profile
+  become: false
+  file:
+    path: "/home/$USER/.bash_profile"
+    state: touch
+
+- name: Export a path of dotnet tools to the PATH
+  become: false
+  lineinfile:
+    path: /home/$USER/.bash_profile
+    line: export PATH="$PATH:/home/$USER/.dotnet/tools"
+
+- name: Create directory
+  become: false
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /Volumes/storage/builds/fort
+    - /Volumes/storage/SyncServers/scripts
+    - /home/$USER/.aws
+    - /home/$USER/.pip
+
+- name: Create directory for ssh
+  become: false
+  file:
+    path: /home/$USER/.ssh
+    state: directory
+    mode: "0700"
+
+- name: Copy ssh private key
+  become: false
+  copy:
+    src: .ssh/id_rsa
+    dest: /home/$USER/.ssh
+    mode: "0600"
+
+- name: Copy files
+  become: false
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: u=rwx,g=rwx,o=rx
+  loop:
+    - { src: "scripts/cloudsend.sh", dest: "/Volumes/storage/"}
+    - { src: "scripts/supload.sh", dest: "/Volumes/storage/SyncServers/scripts/" }
+    - { src: "keystore/example.keystore", dest: "/Volumes/storage/builds/fort/"}
+    - { src: ".aws/config", dest: "/home/$USER/.aws/"}
+    - { src: ".aws/credentials", dest: "/home/$USER/.aws/"}
+
+- name: Copy pip.conf
+  copy:
+    src: ".pip/pip.conf"
+    dest: "/usr/"
+    mode: "0666"
+
+- name: Autorun agent
+  become: false
+  lineinfile:
+    path: /home/$USER/.profile
+    line: /home/$USER/TC_agent/bin/agent.sh start
+
+- name: Set virtual memory areas
+  sysctl:
+    name: vm.max_map_count
+    value: "262144"
+    sysctl_set: true
+
