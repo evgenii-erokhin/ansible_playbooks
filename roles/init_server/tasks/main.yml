@@ -3,6 +3,14 @@
   hostname:
     name: "{{ hostname | default('new_server') }}"
 
+- name: Install packages
+  apt:
+    name: "{{ packages }}"
+    update_cache: true
+
+- include_role:
+    name: install_docker
+
 - name: Set SWAP
   block:
     - name: Calculate swap size based on physical memory
@@ -64,6 +72,14 @@
         path: /etc/fstab
         line: "/swapfile none swap sw 0 0"
         state: present
+
+- include_role:
+    name: add_user
+  vars:
+    user_name: "{{ item }}"
+    group_name: "{{ item }}"
+    key_user: "{{ item }}.pub"
+  loop: "{{ sudo_users }}"
 
 - name: stop ntp service
   service:
