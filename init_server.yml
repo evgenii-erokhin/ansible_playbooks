@@ -1,0 +1,7 @@
+---
+- name: Init server
+  hosts: all
+  become: yes
+  tasks:
+    - include_role:
+        name: init_server
