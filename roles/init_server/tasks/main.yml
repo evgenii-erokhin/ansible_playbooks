@@ -1,0 +1,93 @@
+---
+- name: Set hostname
+  hostname:
+    name: "{{ hostname | default('new_server') }}"
+
+- name: Set SWAP
+  block:
+    - name: Calculate swap size based on physical memory
+      set_fact:
+        swap_size_mb: >-
+          {% if ansible_memtotal_mb < 2048 %}
+            {{ ansible_memtotal_mb * 2 }}
+          {% elif ansible_memtotal_mb >= 2048 and ansible_memtotal_mb < 8192 %}
+            {{ ansible_memtotal_mb }}
+          {% else %}
+            {{ ansible_memtotal_mb // 2 }}
+          {% endif %}
+
+    - name: Display calculated swap size (for debug)
+      debug:
+          msg: "Calculated swap size: {{ swap_size_mb }} MB"
+
+    - name: Check if swap file exists
+      stat:
+        path: /swapfile
+      register: swapfile_stat
+
+    - name: Check if swap is active
+      command: swapon --show
+      register: swapon_checked
+      changed_when: false
+      failed_when: false
+
+    - name: Disable swap
+      command: swapoff /swapfile
+      when:
+        - swapfile_stat.stat.exists
+        - swapon_checked.stdout != ''
+
+    - name: Delete SWAP file
+      file:
+        path: /swapfile
+        state: absent
+      when: swapfile_stat.stat.exists
+
+    - name: Create swapfile with calculated size
+      command: fallocate -l {{ swap_size_mb }}M /swapfile
+      args:
+        creates: /swapfile
+
+    - name: Set permissions on swapfile
+      file:
+        path: /swapfile
+        mode: "0600"
+
+    - name: Create filesystem SWAP file
+      command: mkswap /swapfile
+
+    - name: Enable SWAP
+      command: swapon /swapfile
+
+    - name: Add swap to /etc/fstab
+      lineinfile:
+        path: /etc/fstab
+        line: "/swapfile none swap sw 0 0"
+        state: present
+
+- name: stop ntp service
+  service:
+    name: ntp
+    state: stopped
+  when: "'ntp' in ansible_facts.packages"
+
+- name: Disable ntp service
+  service:
+    name: ntp
+    enabled: false
+  when: "'ntp' in ansible_facts.packages"
+
+- name: Install and run chrony
+  apt:
+    name: chrony
+
+- name: Start chrony service
+  service:
+    name: chrony
+    state: started
+
+- name: Enable chrony service
+  service:
+    name: chrony
+    enabled: true
+
