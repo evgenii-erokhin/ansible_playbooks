@@ -1,0 +1,38 @@
+---
+- name: Add group
+  group:
+    name: "{{ group_name }}"
+    gid: "{{ user_gid | default(omit)  }}"
+    state: present
+
+- name: Adding user {{ user_name }}
+  user:
+    name: "{{ user_name }}"
+    group: "{{ group_name }}"
+    shell: /bin/bash
+    uid: "{{ user_uid | default(omit) }}"
+    append: yes
+  register: user_status
+
+- name: adding ansible user to sudoers
+  lineinfile:
+    path: /etc/sudoers
+    insertafter: "^# User privilege specification"
+    line: "{{ user_name }}     ALL=(ALL:ALL) ALL"
+    validate: visudo -cf %s
+
+- name: Unlock password and set it to empty
+  command: passwd -d {{ user_name }}
+  when: user_status.changed
+
+- name: Expire password
+  command: chage -d 0 {{ user_name }}
+  when: user_status.changed
+
+- name: Set authorized key taken from file
+  ansible.posix.authorized_key:
+    user: "{{ user_name }}"
+    state: present
+    key: "{{ lookup('file', key_user) }}"
+  tags: key_user
+

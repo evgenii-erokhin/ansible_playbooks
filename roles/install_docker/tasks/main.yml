@@ -1,0 +1,42 @@
+---
+- name: Set rights
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Add docker key and change rights to key file
+  block:
+    - name: Add docker key
+      get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+
+    - name: Change rights
+      file:
+        path: /etc/apt/keyrings/docker.asc
+        state: file
+        mode: "a+r"
+
+- name: Get architecture of OS
+  shell: dpkg --print-architecture
+  register: os_architecture
+
+- name: Add the repository of docker to apt sources
+  apt_repository:
+    repo: deb [arch={{ os_architecture.stdout }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu  {{ ansible_distribution_release }} stable
+    filename: docker
+
+- name: Install docker
+  apt:
+    pkg:
+      - docker-ce=5:28.0.4-1~ubuntu.24.04~{{ ansible_distribution_release }}
+      - docker-ce-cli=5:28.0.4-1~ubuntu.24.04~{{ ansible_distribution_release }}
+      - containerd.io=1.7.27-1
+    update_cache: yes
+
+- name: Start docker
+  systemd:
+    state: started
+    enabled: yes
+    name: docker

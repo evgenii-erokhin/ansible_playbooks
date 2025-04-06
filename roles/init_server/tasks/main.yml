@@ -2,11 +2,19 @@
 - name: Set hostname
   hostname:
     name: "{{ hostname | default('new_server') }}"
+  when: ansible_hostname != hostname | default('new_server')
+
+- name: Update /etc/hosts with new hostname
+  lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1.*'
+    line: "127.0.1.1 {{ hostname | default('new_server') }}"
 
 - name: Install packages
   apt:
     name: "{{ packages }}"
     update_cache: true
+  when: packages is defined and packages | length > 0
 
 - include_role:
     name: install_docker
@@ -52,34 +60,40 @@
       when: swapfile_stat.stat.exists
 
     - name: Create swapfile with calculated size
-      command: fallocate -l {{ swap_size_mb }}M /swapfile
+      command: fallocate -l "{{ swap_size_mb | trim }}M" /swapfile
       args:
         creates: /swapfile
+
+    - name: Create filesystem
+      command: mkswap /swapfile
 
     - name: Set permissions on swapfile
       file:
         path: /swapfile
         mode: "0600"
 
-    - name: Create filesystem SWAP file
-      command: mkswap /swapfile
+    - name: Add swap to fstab for auto-mount on reboot
+      lineinfile:
+        path: /etc/fstab
+        line: "/swapfile none swap sw 0 0"
+        create: yes
 
     - name: Enable SWAP
       command: swapon /swapfile
 
-    - name: Add swap to /etc/fstab
-      lineinfile:
-        path: /etc/fstab
-        line: "/swapfile none swap sw 0 0"
-        state: present
-
 - include_role:
     name: add_user
   vars:
+    sudo_users:
+      - your_username
     user_name: "{{ item }}"
     group_name: "{{ item }}"
     key_user: "{{ item }}.pub"
   loop: "{{ sudo_users }}"
+  when: sudo_users is defined and sudo_users | length > 0
+
+- name: Check if ntp is installed
+  package_facts:
 
 - name: stop ntp service
   service:
@@ -91,6 +105,12 @@
   service:
     name: ntp
     enabled: false
+  when: "'ntp' in ansible_facts.packages"
+
+- name: Delete ntp package
+  apt:
+    name: ntp
+    state: absent
   when: "'ntp' in ansible_facts.packages"
 
 - name: Install and run chrony
@@ -106,4 +126,40 @@
   service:
     name: chrony
     enabled: true
+
+- name: Disable root login and password authentication for SSH
+  block:
+    - name: Disable password authentication for SSH
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regex: '^#?PasswordAuthentication'
+        line: 'PasswordAuthentication no'
+        state: present
+        validate: '/usr/sbin/sshd -t -f %s'
+      register: password_auth
+
+    - name: Enable SSH authentication with public key
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regex: '^#?PubkeyAuthentication'
+        line: 'PubkeyAuthentication yes'
+        state: present
+        validate: '/usr/sbin/sshd -t -f %s'
+      register: pubkey_auth
+
+    - name: Disable root login
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?\s*PermitRootLogin\s'
+        line: 'PermitRootLogin no'
+        state: present
+        validate: '/usr/sbin/sshd -t -f %s'
+      register: root_login
+
+    - name: Restart SSH service
+      service:
+        name: ssh
+        state: restarted
+      when: password_auth.changed or pubkey_auth.changed or root_login.changed
+
 

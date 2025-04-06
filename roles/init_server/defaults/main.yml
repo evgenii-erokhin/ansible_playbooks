@@ -1,5 +1,5 @@
 ---
-hostname: "new_host"
+hostname: "your_hostname"
 packages:
   - git
   - curl

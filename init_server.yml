@@ -1,5 +1,6 @@
 ---
 - name: Init server
+  gather_facts: yes
   hosts: all
   become: yes
   tasks:
