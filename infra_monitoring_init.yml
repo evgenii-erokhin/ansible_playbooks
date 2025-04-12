@@ -1,0 +1,10 @@
+- gather_facts: yes
+  become: true
+  hosts: all
+  tasks:
+    roles:
+      - docker_network
+      - prometheus
+      - grafana
+      - node_exporter
+      - cadvisor

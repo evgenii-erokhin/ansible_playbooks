@@ -1,0 +1,12 @@
+---
+- name: Run container
+  docker_container:
+    name: "{{ name }}"
+    image: "{{ image }}"
+    state: started
+    networks: "{{ network_name | default(omit) }}"
+    published_ports: "{{ ports | default(omit) }}"
+    volumes: "{{ volumes | default(omit) }}"
+    env: "{{ env | default(omit) }}"
+    restart_policy: "{{ restart_policy | default(\"unless-stopped\") }}"
+    pull: "{{ pull | default(\"True\") }}"
