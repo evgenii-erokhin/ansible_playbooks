@@ -1,0 +1,4 @@
+---
+- name: Run node_exporter
+  include_role:
+    name: run_container

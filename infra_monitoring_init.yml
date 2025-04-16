@@ -1,10 +1,12 @@
 - gather_facts: yes
   become: true
-  hosts: all
+  hosts: monitoring
   tasks:
-    roles:
-      - docker_network
-      - prometheus
-      - grafana
-      - node_exporter
-      - cadvisor
+  - include_role:
+      name: docker_network
+  - include_role:
+      name: prometheus
+  - include_role:
+      name: grafana
+
+

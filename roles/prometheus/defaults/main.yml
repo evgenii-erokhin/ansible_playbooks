@@ -1,0 +1,9 @@
+---
+dir_path: /etc/prometheus/config
+name: prometheus
+image: prom/prometheus:v3.3.0-rc.1
+ports:
+    - 9090:9090
+volumes:
+    - /etc/prometheus/config/:/etc/prometheus/
+

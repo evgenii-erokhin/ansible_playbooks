@@ -1,0 +1,14 @@
+---
+- name: Create directory on host
+  file:
+    path: /etc/prometheus/config
+    state: directory
+
+- name: Generate prometheus.yml
+  template:
+    src: prometheus.yml.j2
+    dest: /etc/prometheus/config/prometheus.yml
+
+- name: Start prometheus
+  include_role:
+    name: run_container
