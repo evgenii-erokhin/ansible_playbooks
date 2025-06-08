@@ -1,0 +1,5 @@
+unity_accelerator_version: "v1.0.946-g7cc8240"
+gitlab_runner_version: "17.6.0-1"
+dotnet_sonarscanner_version: "9.2.1"
+system_path: "/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin"
+user_home: "/home/{{ ansible_user }}"

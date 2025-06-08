@@ -1,0 +1,58 @@
+---
+- name: Update gitlab-runner working directory in systemd unit file
+  lineinfile:
+    path: /etc/systemd/system/gitlab-runner.service
+    regexp: '^ExecStart=.*--working-directory.*$'
+    line: 'ExecStart=/usr/bin/gitlab-runner "run" "--config" "/etc/gitlab-runner/config.toml" "--working-directory" "/Volumes/king/gitlab-runner" "--service" "gitlab-runner" "--user" "dev"'
+
+- name: Check of config.toml is exist in home directory
+  stat:
+    path: "/home/{{ ansible_user }}/.gitlab-runner/config.toml"
+  register: toml_stat
+
+- name: Copy gitlab-runner config file
+  copy:
+    src: '/home/{{ ansible_user }}/.gitlab-runner/config.toml'
+    dest: /etc/gitlab-runner/config.toml
+    remote_src: yes
+  when: toml_stat.stat.exists
+
+- name: Add environment variable to each runners
+  replace:
+    path: /etc/gitlab-runner/config.toml
+    regexp: '(\[\[runners\]\]\n(?:(?!^\s*environment\s*=).*\n)*?)(^\s*url\s*=.*\n)'
+    replace: '\1  environment = ["RUNNER_UNITY_EXE=/home/dev/Unity/Hub/Editor/unity_version_placeholder/Editor/Unity", "BUILD_TARGET=StandaloneLinux64", "BUILD_EXTENTION="]\n\2'
+    backup: yes
+  when: toml_stat.stat.exists
+
+- name: Check of config.toml is exist in /etc/gitlab-runner/ directory
+  stat:
+    path: "/etc/gitlab-runner/config.toml"
+  register: etc_toml_stat
+
+- name: Count number of runners in config file
+  shell: grep -c '^\[\[runners\]\]' /etc/gitlab-runner/config.toml
+  register: runner_count
+  changed_when: false
+  when: etc_toml_stat.stat.exists
+
+- name: Up concurrent rate
+  replace:
+    path: /etc/gitlab-runner/config.toml
+    regexp: '^concurrent\s=\s\d+$'
+    replace: 'concurrent = {{ runner_count.stdout | default(1) }}'
+    backup: yes
+  when: etc_toml_stat.stat.exists and runner_count.stdout is defined
+
+- name: Enabled custom dir for builds
+  replace:
+    path: /etc/gitlab-runner/config.toml
+    regexp: '(\[\[runners\]\]\n(?:\s+.*\n)*?\s*\[runners\.custom_build_dir\]\n)'
+    replace: '\1    enabled = true\n'
+    backup: yes
+  when: etc_toml_stat.stat.exists
+
+- name: Reload gitlab-runner.service to apply changes
+  systemd:
+    state: restarted
+    name: gitlab-runner.service

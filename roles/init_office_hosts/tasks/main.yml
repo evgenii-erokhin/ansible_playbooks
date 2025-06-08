@@ -1,0 +1,458 @@
+---
+- name: Install packages
+  apt:
+    pkg:
+      - git
+      - git-lfs
+      - curl
+      - ca-certificates
+      - awscli
+      - openjdk-21-jre-headless
+      - jq
+      - wget
+      - mc
+      - vim
+      - htop
+      - ncdu
+      - zsh
+      - python3-docker
+    update_cache: yes
+
+- name: Install dependencies for Pyenv
+  apt:
+    pkg:
+    - make
+    - build-essential
+    - libssl-dev
+    - zlib1g-dev
+    - libbz2-dev
+    - libreadline-dev
+    - libsqlite3-dev
+    - libncursesw5-dev
+    - xz-utils
+    - tk-dev
+    - libxml2-dev
+    - libxmlsec1-dev
+    - libffi-dev
+    - liblzma-dev
+
+- name: Create .bash_profile
+  become: false
+  file:
+    path: "{{ user_home }}/.bash_profile"
+    state: touch
+
+- name: Install brew
+  block:
+    - name: Check if brew is installed
+      stat:
+        path: "/home/linuxbrew"
+      register: brew_check
+      changed_when: false
+      failed_when: false
+
+    - name: Install brew
+      become: false
+      shell: |
+          NONINTERACTIVE=1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+      when: brew_check.stat.exists == false
+      register: brew_install
+
+    - name: Export a path of brew to the PATH in .bash_profile
+      become: false
+      lineinfile:
+        path: "{{ user_home }}/.bash_profile"
+        line: 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"'
+
+    - name: Export a path of brew to the PATH in .bashrc
+      become: false
+      lineinfile:
+        path: "{{ user_home }}/.bashrc"
+        line: 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"'
+
+    - name: Install dependencies
+      become: false
+      community.general.homebrew:
+        name: gcc
+        path: "{{ system_path }}"
+
+
+- name: Install Saxon
+  become: false
+  community.general.homebrew:
+    name: saxon
+    path: "{{ system_path }}"
+
+- name: Install Allure
+  become: false
+  community.general.homebrew:
+    name: allure
+    path: "{{ system_path }}"
+
+
+- name: Install Pyenv
+  block:
+    - name: Check if pyenv is installed
+      stat:
+        path: "{{ user_home }}/.pyenv"
+      register: pyenv_check
+      changed_when: false
+      failed_when: false
+
+    - name: Install pyenv
+      become: false
+      shell: curl -fsSL https://pyenv.run | bash
+      register: pyenv_installed
+      when: pyenv_check.stat.exists == false
+
+    - name: Export a path of pyenv to the PATH in .bashrc
+      become: false
+      lineinfile:
+        path: "{{ user_home }}/.bashrc"
+        line: "{{ item }}"
+      loop:
+        - 'export PYENV_ROOT="$HOME/.pyenv"'
+        - '[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"'
+        - 'eval "$(pyenv init - bash)"'
+
+    - name: Export a path of pyenv to the PATH in .profile
+      become: false
+      lineinfile:
+        path: "{{ user_home }}/.profile"
+        line: "{{ item }}"
+        create: yes
+      loop:
+        - 'export PYENV_ROOT="$HOME/.pyenv"'
+        - '[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"'
+        - 'eval "$(pyenv init - bash)"'
+
+    - name: Export a path of pyenv to the PATH in .bash_profile
+      become: false
+      lineinfile:
+        path: "{{ user_home }}/.bash_profile"
+        line: "{{ item }}"
+      loop:
+        - 'export PYENV_ROOT="$HOME/.pyenv"'
+        - '[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"'
+        - 'eval "$(pyenv init - bash)"'
+
+- name: Install python
+  block:
+    - name: Check is python installed
+      become: false
+      stat:
+        path: "{{ user_home }}/.pyenv/versions/{{ python_version }}"
+      register: python_exists
+
+    - name: install python 3.11
+      become: false
+      shell: "{{ user_home }}/.pyenv/bin/pyenv install {{ python_version }}"
+      register: python_installed
+      when: not python_exists.stat.exists
+
+    - name: Set pyenv python version as a global python
+      become: false
+      shell: ". {{ user_home }}/.bashrc && {{ user_home }}/.pyenv/bin/pyenv global {{ python_version }}"
+      when: python_installed
+
+- name: Install Unity Hub
+  block:
+    - name: Create keyrings directory if it doesn't exist
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Download Unity GPG key
+      get_url:
+        url: https://hub.unity3d.com/linux/keys/public
+        dest: /etc/apt/keyrings/unityhub.asc
+        mode: "0644"
+
+    - name: Add Unity Hub repository
+      apt_repository:
+        repo: deb [signed-by=/etc/apt/keyrings/unityhub.asc] https://hub.unity3d.com/linux/repos/deb stable main
+        filename: unityhub
+
+    - name: Install Unity Hub
+      apt:
+        name: unityhub
+        update_cache: true
+
+- name: Comment out clear_console block in .bash_logout
+  become: false
+  ansible.builtin.replace:
+    path: '{{ user_home }}/.bash_logout'
+    regexp: '(?m)^\s*if \[ \"\$SHLVL\" = 1 \]; then\n\s*\[ -x /usr/bin/clear_console \] && /usr/bin/clear_console -q\n\s*fi$'
+    replace: |
+      # if [ "$SHLVL" = 1 ]; then
+      #    [ -x /usr/bin/clear_console ] && /usr/bin/clear_console -q
+      # fi
+
+- name: Install gitlab-runner
+  block:
+    - name: Add gitlab-runner repo
+      shell: curl -L "https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.deb.sh" | bash
+      args:
+        creates: /etc/apt/sources.list.d/gitlab-runner.list
+
+    - name: Install gitlab-runner
+      apt:
+        name: gitlab-runner={{ gitlab_runner_version }}
+        update_cache: yes
+
+- name: Install firebase
+  shell: curl -sL https://firebase.tools | bash
+
+  # Install Wine
+- name: Enable 32 bit architecture
+  shell: |
+      dpkg --add-architecture i386
+  changed_when: false
+
+- name: Prepare to install Wine
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Download and add the repository key
+  get_url:
+    url: https://dl.winehq.org/wine-builds/winehq.key
+    dest: /etc/apt/keyrings/winehq-archive.key
+
+- name: Download the WineHQ sources file
+  get_url:
+    url: https://dl.winehq.org/wine-builds/ubuntu/dists/{{ ansible_distribution_release }}/winehq-{{ansible_distribution_release }}.sources
+    dest: /etc/apt/sources.list.d/
+
+- name: Install Wine
+  apt:
+    name: winehq-stable
+    update_cache: yes
+    install-recommends: yes
+
+  # Maintaining consistency with the mac version of Wine
+- name: Create Symlink for Wine
+  file:
+    src: /usr/bin/wine64
+    dest: /usr/bin/Wine64
+    state: link
+
+- name: Install docker
+  block:
+    - name: Set rights
+      file:
+        path: "/etc/apt/keyrings"
+        state: directory
+        mode: "0755"
+
+    - name: Add docker key and change rights to key file
+      block:
+        - name: Add docker key
+          get_url:
+            url: https://download.docker.com/linux/ubuntu/gpg
+            dest: /etc/apt/keyrings/docker.asc
+
+        - name: Change rights
+          file:
+            path: "/etc/apt/keyrings/docker.asc"
+            state: file
+            mode: "a+r"
+
+    - name: Get architecture of OS
+      shell: dpkg --print-architecture
+      register: os_architecture
+      changed_when: false
+
+    - name: Add the repository of docker to apt sources
+      apt_repository:
+        repo: deb [arch={{ os_architecture.stdout }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu  {{ ansible_distribution_release }} stable
+        filename: docker
+
+    - name: Install docker
+      apt:
+        pkg:
+          - docker-ce=5:25.0.5-1~ubuntu.22.04~{{ ansible_distribution_release }}
+          - docker-ce-cli=5:25.0.5-1~ubuntu.22.04~{{ ansible_distribution_release }}
+          - containerd.io=1.6.28-2
+        update_cache: yes
+
+    - name: Start docker
+      systemd:
+        state: started
+        enabled: yes
+        name: docker
+
+- name: Install dotnet-sdk
+  apt:
+      name: dotnet-sdk-8.0
+
+- name: Check dotnet is exist
+  become: false
+  stat:
+    path: "{{ user_home }}}/.dotnet/tools/dotnet-sonarscanner"
+  register: sonarscanner_stat
+
+- name: Install dotnet-sonarscaner
+  shell: dotnet tool install --global dotnet-sonarscanner --version {{ dotnet_sonarscanner_version }}
+  when: not sonarscanner_stat.stat.exists
+
+- name: Export a path of dotnet tools to the PATH in .bash_profile
+  become: false
+  lineinfile:
+    path: "{{ user_home }}/.bash_profile"
+    line: export PATH="$PATH:/home/$USER/.dotnet/tools"
+
+- name: Export a path of dotnet tools to the PATH in .bashrc
+  become: false
+  lineinfile:
+    path: "{{ user_home }}/.bashrc"
+    line: export PATH="$PATH:/home/$USER/.dotnet/tools"
+
+- name: Create system directory
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /Volumes
+    - /Volumes/king
+
+- name: Change owner
+  file:
+    path: /Volumes/king
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+
+- name: Create nested system and user directory
+  become: false
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "/Volumes/king/builds/app_name"
+    - "/Volumes/king/SyncServers/scripts"
+    - "/Volumes/king/gitlab-runner"
+    - "{{ user_home }}/.aws"
+    - "{{ user_home }}/.pip"
+    - "{{ user_home }}/unity_accelerator"
+
+- name: Run Unity accelerator
+  docker_container:
+    name: unity-accelerator
+    image: unitytechnologies/accelerator:{{unity_accelerator_version}}
+    state: started
+    restart_policy: unless-stopped
+    volumes:
+      - "{{ user_home }}/unity_accelerator:/agent"
+    ports:
+      - "8080:80"
+      - "10443:443"
+      - "10080:10080"
+    env:
+      PASSWORD: "1945"
+      USER: "admin"
+
+- name: Create directory for ssh
+  become: false
+  file:
+    path: "{{ user_home }}/.ssh"
+    state: directory
+    mode: "0700"
+
+- name: Copy ssh private key
+  become: false
+  copy:
+    src: .ssh/id_rsa
+    dest: "{{ user_home }}/.ssh"
+    mode: "0600"
+
+- name: Copy files
+  become: false
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: u=rwx,g=rwx,o=rx
+  loop:
+    - { src: "scripts/cloudsend.sh", dest: "/Volumes/king/"}
+    - { src: "scripts/supload.sh", dest: "/Volumes/king/SyncServers/scripts/" }
+    - { src: "keystore/app.keystore", dest: "/Volumes/king/builds/app_name/"}
+    - { src: ".aws/config", dest: "{{ user_home }}/.aws/"}
+    - { src: ".aws/credentials", dest: "{{ user_home }}/.aws/"}
+
+- name: Copy pip.conf
+  copy:
+    src: ".pip/pip.conf"
+    dest: "/etc/"
+    mode: "0666"
+
+- name: Set virtual memory areas
+  sysctl:
+    name: vm.max_map_count
+    value: "262144"
+    sysctl_set: true
+
+- name: Set SWAP
+  block:
+    - name: Calculate swap size based on physical memory
+      set_fact:
+        swap_size_mb: >-
+          {% if ansible_memtotal_mb < 2048 %}
+            {{ ansible_memtotal_mb * 2 }}
+          {% elif ansible_memtotal_mb >= 2048 and ansible_memtotal_mb < 8192 %}
+            {{ ansible_memtotal_mb }}
+          {% else %}
+            {{ ansible_memtotal_mb // 2 }}
+          {% endif %}
+
+    - name: Display calculated swap size (for debug)
+      debug:
+          msg: "Calculated swap size: {{ swap_size_mb }} MB"
+
+    - name: Check if swap file exists
+      stat:
+        path: /swapfile
+      register: swapfile_stat
+
+    - name: Check if swap is active
+      command: swapon --show
+      register: swapon_checked
+      changed_when: false
+      failed_when: false
+
+    - name: Disable swap
+      command: swapoff /swapfile
+      when:
+        - swapfile_stat.stat.exists
+        - swapon_checked.stdout != ''
+
+    - name: Delete SWAP file
+      file:
+        path: /swapfile
+        state: absent
+      when: swapfile_stat.stat.exists
+
+    - name: Create swapfile with calculated size
+      command: fallocate -l "{{ swap_size_mb | trim }}M" /swapfile
+      args:
+        creates: /swapfile
+
+    - name: Create filesystem
+      command: mkswap /swapfile
+
+    - name: Set permissions on swapfile
+      file:
+        path: /swapfile
+        mode: "0600"
+
+    - name: Add swap to fstab for auto-mount on reboot
+      lineinfile:
+        path: /etc/fstab
+        line: "/swapfile none swap sw 0 0"
+        create: yes
+
+    - name: Enable SWAP
+      command: swapon /swapfile

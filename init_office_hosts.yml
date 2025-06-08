@@ -1,0 +1,7 @@
+---
+- gather_facts: yes
+  become: true
+  hosts: all
+  tasks:
+  - include_role:
+      name: init_office_hosts
